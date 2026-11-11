@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily Football Quiz</title>
+<link rel="icon" href="/favicon.png">
+<meta name="description" content="New football questions every day and a weekly leaderboard.">
+<style>
+:root{--bg:#f3f7f1;--card:#fff;--ink:#14231a;--mut:#5b6b60;--acc:#1e9e4a;--accink:#fff;--bad:#d64545;--line:#dde6da;--gold:#e0a800;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1712;--card:#16231b;--ink:#eaf3ec;--mut:#9bb0a1;--acc:#33c463;--accink:#06210f;--bad:#ff7070;--line:#243a2c;--gold:#f2c230;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:env(safe-area-inset-bottom,0)}
+header{padding:calc(22px + env(safe-area-inset-top,0)) 18px 18px;text-align:center;background:linear-gradient(135deg,#0f6b30,#1e9e4a);color:#fff}
+header img{border-radius:50%;display:block;margin:0 auto 10px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+header h1{margin:0;font-size:26px;letter-spacing:-.5px}header p{margin:4px 0 0;opacity:.9}
+main{max-width:640px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+h2{margin:0 0 10px;font-size:18px}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.mut{color:var(--mut);font-size:14px}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;background:var(--line);font-size:12px;font-weight:600}
+.pill.pro{background:var(--gold);color:#222}
+button{font:inherit;cursor:pointer;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:12px 14px;text-align:left;width:100%;margin-top:8px}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button.primary{background:var(--acc);color:var(--accink);border-color:var(--acc);font-weight:700;text-align:center}
+button.ok{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+button.no{background:var(--bad);color:#fff;border-color:var(--bad)}
+button:disabled{cursor:default;opacity:.85}
+input{font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+.bar{height:8px;background:var(--line);border-radius:9px;overflow:hidden;margin:8px 0 14px}.bar i{display:block;height:100%;background:var(--acc);transition:width .3s}
+table{width:100%;border-collapse:collapse}td,th{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left}th{font-size:12px;color:var(--mut)}
+td.n,th.n{text-align:right}tr.me td{font-weight:700;color:var(--acc)}
+.big{font-size:40px;font-weight:800;text-align:center}
+.plan{border:2px solid var(--gold);border-radius:14px;padding:14px;margin-top:8px}
+.err{color:var(--bad);font-size:14px;margin-top:8px}
+code{word-break:break-all;font-size:12px;background:var(--bg);padding:6px;border-radius:8px;display:block;margin-top:6px}
+</style></head>
+<body>
+<header><img src="/logo.jpg" alt="Daily Football Quiz" width="150" height="150"><h1>Daily Football Quiz</h1><p>New questions every day, a new leaderboard every week</p></header>
+<main>
+<div id="nameCard" class="card" hidden>
+  <h2>Pick a player name</h2>
+  <p class="mut">This is shown on the weekly leaderboard.</p>
+  <input id="nameIn" maxlength="20" placeholder="e.g. TopCorner99" autocomplete="off">
+  <button class="primary" id="nameBtn">Save and play</button>
+  <div class="err" id="nameErr"></div>
+</div>
+<div id="quiz" class="card" hidden></div>
+<div id="pro" class="card" hidden></div>
+<div class="card"><div class="row"><h2>This week’s leaderboard</h2><span class="mut" id="wk"></span></div><div id="lb" class="mut">Loading…</div></div>
+<div class="card">
+  <details><summary>Your account</summary>
+    <p class="mut">Your progress is tied to this browser. To keep it on another device, copy your recovery code and paste it there. Keep it private.</p>
+    <code id="code"></code>
+    <button id="copy">Copy recovery code</button>
+    <input id="restoreIn" placeholder="Paste a recovery code to restore" style="margin-top:12px" autocomplete="off">
+    <button id="restoreBtn">Restore account</button>
+    <div class="err" id="restoreErr"></div>
+  </details>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const rand=()=>[...crypto.getRandomValues(new Uint8Array(24))].map(b=>b.toString(16).padStart(2,"0")).join("");
+let token=null;try{token=localStorage.getItem("dfq_token");}catch(e){}
+if(!token){token=rand();try{localStorage.setItem("dfq_token",token);}catch(e){}}
+async function api(path,opts={},tok=token){
+  const r=await fetch("/api/"+path,{...opts,headers:{"content-type":"application/json","x-player":tok}});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||"Something went wrong. Try again.");
+  return j;
+}
+const post=(p,b)=>api(p,{method:"POST",body:JSON.stringify(b||{})});
+let S=null,busy=false;
+
+async function load(){
+  try{S=await api("me");}catch(e){$("quiz").hidden=false;$("quiz").innerHTML=`<p class="err">${esc(e.message)}</p>`;return;}
+  render();loadLB();
+}
+function render(){
+  $("code").textContent=token;
+  $("wk").textContent="Week of "+new Date(S.weekStart+"T12:00:00").toLocaleDateString(undefined,{day:"numeric",month:"short"});
+  const named=!!S.name;
+  $("nameCard").hidden=named;$("quiz").hidden=!named;$("pro").hidden=!named;
+  if(named){renderQuiz();renderPro();}
+}
+function renderQuiz(){
+  const L=S.questions.length,done=S.questions.filter(q=>q.yours!==undefined),score=done.filter(q=>q.ok).length;
+  const head=`<div class="row"><h2>Today’s questions</h2><span class="pill ${S.pro?"pro":""}">${S.pro?"Pro: "+S.proLimit:"Free: "+S.free} a day</span></div><div class="bar"><i style="width:${done.length/L*100}%"></i></div>`;
+  const next=S.questions.find(q=>q.yours===undefined);
+  if(!next){$("quiz").innerHTML=head+`<div class="big">${score}/${L}</div><p class="mut" style="text-align:center">${score===L?"Perfect round!":"Good effort."} New questions arrive tomorrow${S.pro?".":", or go Pro for "+(S.proLimit-S.free)+" more every day."}</p>`;return;}
+  $("quiz").innerHTML=head+`<div class="mut">Question ${done.length+1} of ${L}</div><h2 style="font-size:20px;margin-top:4px">${esc(next.q)}</h2><div id="opts"></div><div id="fb" class="mut" style="margin-top:10px"></div>`;
+  next.options.forEach((t,i)=>{const b=document.createElement("button");b.textContent=t;b.onclick=()=>answer(next,i);$("opts").appendChild(b);});
+}
+async function answer(q,i){
+  if(busy)return;busy=true;
+  const bs=[...document.querySelectorAll("#opts button")];bs.forEach(b=>b.disabled=true);
+  try{
+    const r=await post("answer",{id:q.id,choice:i});
+    bs[r.right].classList.add("ok");if(!r.ok)bs[i].classList.add("no");
+    Object.assign(q,{yours:i,ok:r.ok,right:r.right});
+    S.week.a++;if(r.ok)S.week.c++;
+    $("fb").innerHTML=(r.ok?"Correct!":"Not quite.")+`<button class="primary" id="nx">Next</button>`;
+    $("nx").onclick=()=>{renderQuiz();loadLB();};$("nx").focus();
+  }catch(e){bs.forEach(b=>b.disabled=false);$("fb").innerHTML=`<span class="err">${esc(e.message)}</span>`;}
+  busy=false;
+}
+function renderPro(){
+  const el=$("pro");
+  if(S.pro){el.innerHTML=`<div class="row"><h2>You’re on Pro</h2><span class="pill pro">Active</span></div><p class="mut">You get ${S.proLimit} questions every day.</p>`+(S.hasCustomer?`<button id="manage">Manage or cancel subscription</button>`:"")+`<div class="err" id="proErr"></div>`;
+    if(S.hasCustomer)$("manage").onclick=()=>redirect("portal");return;}
+  if(!S.billing){el.hidden=true;return;}
+  el.innerHTML=`<h2>Go Pro</h2><div class="plan"><b>${S.proLimit} questions a day</b> instead of ${S.free}<br><span class="mut">More chances to climb the weekly leaderboard. Cancel any time.</span><button class="primary" id="sub">Subscribe</button></div><div class="err" id="proErr"></div>`;
+  $("sub").onclick=()=>redirect("checkout");
+}
+async function redirect(p){try{const r=await post(p);location.href=r.url;}catch(e){$("proErr").textContent=e.message;}}
+async function loadLB(){
+  try{
+    const r=await api("leaderboard"),rows=r.top.concat(r.you?[r.you]:[]);
+    if(!rows.length){$("lb").textContent="No scores yet this week. Be the first.";return;}
+    $("lb").innerHTML=`<table><tr><th>#</th><th>Player</th><th class="n">Correct</th><th class="n">Answered</th></tr>`+
+      rows.map(x=>`<tr class="${x.you?"me":""}"><td>${x.rank}</td><td>${esc(x.name)}</td><td class="n">${x.c}</td><td class="n">${x.a}</td></tr>`).join("")+`</table>`;
+  }catch(e){$("lb").textContent="Can’t load the leaderboard right now.";}
+}
+$("nameBtn").onclick=async()=>{
+  try{await post("name",{name:$("nameIn").value});await load();}catch(e){$("nameErr").textContent=e.message;}
+};
+$("nameIn").onkeydown=e=>{if(e.key==="Enter")$("nameBtn").click();};
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText(token);$("copy").textContent="Copied";}catch(e){}};
+$("restoreBtn").onclick=async()=>{
+  const t=$("restoreIn").value.trim();
+  try{const r=await api("me",{},t);if(!r.exists)throw new Error("That code wasn’t found.");localStorage.setItem("dfq_token",t);location.reload();}
+  catch(e){$("restoreErr").textContent=e.message.includes("Missing")?"That code isn’t valid.":e.message;}
+};
+load();
+if(new URLSearchParams(location.search).has("paid")){
+  history.replaceState(null,"","/");
+  let n=0;const t=setInterval(async()=>{n++;await load();if((S&&S.pro)||n>8)clearInterval(t);},2500);
+}
+</script></body></html>
